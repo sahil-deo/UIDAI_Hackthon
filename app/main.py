@@ -112,7 +112,7 @@ def get_filter(
 
             cur.execute(query, tuple(params))
 
-            # ChatGPT CHANGE: discard month_num, return ordered names only
+            # discard month_num, return ordered names only
             return {
                 "status": "ok",
                 "data": [r[1].strip() for r in cur.fetchall()]
@@ -141,7 +141,7 @@ def get_data(
     month: str | None = None,
 ):
 
-    # ChatGPT CHANGE: normalize empty strings
+    # normalize empty strings
     state = state or None
     district = district or None
     pincode = pincode or None
@@ -155,7 +155,7 @@ def get_data(
     cur = conn.cursor()
 
     try:
-        # ChatGPT CHANGE: build common filters once
+        # build common filters once
         filters = ["state = %s"]
         params = [state]
 
@@ -178,7 +178,7 @@ def get_data(
                 return {"status": "incomplete request"}
 
             def fetch_yearly(table, columns):
-                # ChatGPT CHANGE: monthly aggregation with zero-fill
+                # monthly aggregation with zero-fill
                 query = f"""
                     SELECT
                         EXTRACT(MONTH FROM date)::int AS m,
@@ -237,7 +237,7 @@ def get_data(
             days_in_month = monthrange(int(year), int(month))[1]
 
             def fetch_daily(table, columns):
-                # ChatGPT CHANGE: daily aggregation by day-of-month
+                # daily aggregation by day-of-month
                 query = f"""
                     SELECT
                         EXTRACT(DAY FROM date)::int AS d,
@@ -293,6 +293,6 @@ def get_data(
         return {"status": "invalid request"}
 
     finally:
-        # ChatGPT CHANGE: guaranteed DB cleanup
+        # guaranteed DB cleanup
         cur.close()
         conn.close()
