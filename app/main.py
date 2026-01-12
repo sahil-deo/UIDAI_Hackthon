@@ -1,8 +1,8 @@
 import psycopg2
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, UploadFile, File
 from app.db import get_conn
 from fastapi.middleware.cors import CORSMiddleware
-
+from pathlib import Path
 app = FastAPI()
 
 app.add_middleware(
@@ -305,3 +305,104 @@ def get_data(
         # guaranteed DB cleanup
         cur.close()
         conn.close()
+
+@app.post("/upload_csv")
+async def upload_csv(
+    request: Request,
+    response: Response,
+    type: str,
+    file: UploadFile = File(...)
+):
+    import pandas as pd
+
+    # validate file extension
+    if not file.filename.lower().endswith(".csv"):
+        return {"status": "invalid file type"}
+
+    # validate type parameter
+    if type not in {"enrollment", "biometric", "demographic"}:
+        return {"status": "invalid type"}
+
+    # ensure upload directory exists
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+
+    file_path = upload_dir / file.filename
+
+    # save uploaded file to disk
+    with open(file_path, "wb") as f:
+        while chunk := await file.read(1024 * 1024):
+            f.write(chunk)
+
+    # read CSV using pandas
+    df = pd.read_csv(file_path)
+
+    # define required columns
+    common_cols = {"date", "state", "district", "pincode"}
+
+    type_columns = {
+        "enrollment": {"age_0_5", "age_5_17", "age_18_greater"},
+        "biometric": {"bio_age_0_5", "bio_age_17_"},
+        "demographic": {"demo_age_0_5", "demo_age_17_"},
+    }
+
+    required_cols = common_cols | type_columns[type]
+
+    # check for missing columns
+    missing = required_cols - set(df.columns)
+    if missing:
+        return {"status": "missing column"}
+
+    # convert age columns from string to int
+    age_cols = list(type_columns[type])
+    for col in age_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # drop rows where age conversion failed
+    df = df.dropna(subset=age_cols)
+
+    # cast age columns to int64 (Postgres int8)
+    df[age_cols] = df[age_cols].astype("int64")
+
+    # clean dataframe
+    df = df.dropna()
+    df = df.drop_duplicates()
+
+    # parse date column and sort
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+    df = df.sort_values("date")
+
+    # insert cleaned data into database
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        table_map = {
+            "enrollment": "enrollment_data",
+            "biometric": "biometric_data",
+            "demographic": "demographic_data",
+        }
+
+        table = table_map[type]
+        cols = list(required_cols)
+        placeholders = ", ".join(["%s"] * len(cols))
+
+        query = f"""
+            INSERT INTO {table} ({", ".join(cols)})
+            VALUES ({placeholders})
+        """
+
+        cur.executemany(
+            query,
+            df[cols].itertuples(index=False, name=None)
+        )
+
+        conn.commit()
+
+    finally:
+        cur.close()
+        conn.close()
+
+    return {"status": "ok"}
+
