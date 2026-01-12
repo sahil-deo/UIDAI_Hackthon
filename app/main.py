@@ -170,7 +170,7 @@ def get_data(
         where_clause = " AND ".join(filters)
 
         # =========================
-        # YEARLY → MONTHLY AGG
+        # monthly -> MONTHLY AGG
         # =========================
         if type == "monthly":
 
@@ -227,7 +227,7 @@ def get_data(
             }
 
         # =========================
-        # DAILY → DAY OF MONTH
+        # daily -> DAY OF MONTH
         # =========================
         if type == "daily":
 
