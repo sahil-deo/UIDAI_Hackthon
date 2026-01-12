@@ -1,0 +1,29 @@
+#--------
+# folders
+#--------
+
+# python cache
+**/__pycache__/
+
+# virtual environment
+.venv/
+
+# unused / unwanted data
+data/
+
+#--------
+# files
+#--------
+
+# python internal
+.python-version
+pyproject.toml
+uv.lock
+
+# unused / old python files
+app/oldmain.py
+data_ingest.py
+
+
+# env file
+.env
