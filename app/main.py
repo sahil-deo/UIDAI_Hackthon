@@ -1,8 +1,17 @@
 import psycopg2
 from fastapi import FastAPI, Request, Response
 from app.db import get_conn
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=['*'],
+    allow_headers=['*'],
+    allow_methods=['*'],
+)
 
 
 @app.get("/filter")
