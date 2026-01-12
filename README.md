@@ -3,7 +3,7 @@
 ## Base URL
 
 ```
-http://<host>:<port>
+https://uidai-hackthon.onrender.com
 ```
 
 All endpoints are **GET** requests and return JSON.
