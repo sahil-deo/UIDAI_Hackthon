@@ -33,7 +33,7 @@ All endpoints are **GET** requests and return JSON.
 
 ---
 
-## 1 `/filter` Endpoint
+## 1. `/filter` Endpoint
 
 Used to **fetch available filter values** (state, district, pincode, year, month) from the database.
 
@@ -168,7 +168,7 @@ Returned months are **ordered chronologically**.
 
 ---
 
-## 2 `/data` Endpoint
+## 2. `/data` Endpoint
 
 Used to fetch **aggregated enrollment, biometric, and demographic data**.
 
