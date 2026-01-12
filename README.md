@@ -33,7 +33,7 @@ All endpoints are **GET** requests and return JSON.
 
 ---
 
-## 1️⃣ `/filter` Endpoint
+## 1 `/filter` Endpoint
 
 Used to **fetch available filter values** (state, district, pincode, year, month) from the database.
 
@@ -59,7 +59,7 @@ GET /filter
 
 ---
 
-### 🔹 `type=state`
+### `type=state`
 
 Returns all distinct states.
 
@@ -80,7 +80,7 @@ Returns all distinct states.
 
 ---
 
-### 🔹 `type=district`
+### `type=district`
 
 Requires `state`.
 
@@ -101,7 +101,7 @@ Requires `state`.
 
 ---
 
-### 🔹 `type=pincode`
+### `type=pincode`
 
 Requires `state` and `district`.
 
@@ -122,7 +122,7 @@ Requires `state` and `district`.
 
 ---
 
-### 🔹 `type=year`
+### `type=year`
 
 Requires `state`.
 Optionally filtered by `district` and `pincode`.
@@ -144,7 +144,7 @@ Optionally filtered by `district` and `pincode`.
 
 ---
 
-### 🔹 `type=month`
+### `type=month`
 
 Requires `state` and `year`.
 Optionally filtered by `district` and `pincode`.
@@ -168,7 +168,7 @@ Returned months are **ordered chronologically**.
 
 ---
 
-## 2️⃣ `/data` Endpoint
+## 2 `/data` Endpoint
 
 Used to fetch **aggregated enrollment, biometric, and demographic data**.
 
@@ -191,7 +191,7 @@ GET /data
 
 ---
 
-## 📊 `type=monthly`
+## `type=monthly`
 
 Returns **month-wise aggregated data** for a given year.
 
@@ -235,7 +235,7 @@ Returns **month-wise aggregated data** for a given year.
 
 ---
 
-## 📅 `type=daily`
+## `type=daily`
 
 Returns **day-wise aggregated data** for a specific month.
 
