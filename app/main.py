@@ -306,6 +306,199 @@ def get_data(
         cur.close()
         conn.close()
 
+@app.get("/aggregate")
+def get_aggregate(
+    request: Request,
+    response: Response,
+    type: str | None = None,
+    state: str | None = None,
+    year: str | None = None,
+    month: str | None = None,
+):
+    # basic validation
+    if type not in {"yearly", "monthly"}:
+        return {"status": "invalid request"}
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        # ==========================================================
+        # CASE 1: STATE IS PROVIDED
+        # ==========================================================
+        if state:
+
+            # fetch districts sorted alphabetically
+            cur.execute("""
+                SELECT DISTINCT district
+                FROM enrollment_data
+                WHERE state = %s
+                ORDER BY district
+            """, (state,))
+            districts = [r[0] for r in cur.fetchall()]
+
+            if not districts:
+                return {"status": "ok", "data": {}}
+
+            # ---------------- YEARLY AGG ----------------
+            if type == "yearly":
+                if not year:
+                    return {"status": "incomplete request"}
+
+                def agg_yearly(table, col):
+                    # aggregate per district
+                    cur.execute(f"""
+                        SELECT district, SUM({col})
+                        FROM {table}
+                        WHERE state = %s
+                          AND EXTRACT(YEAR FROM date) = %s
+                        GROUP BY district
+                    """, (state, int(year)))
+
+                    rows = dict(cur.fetchall())
+                    return [rows.get(d, 0) for d in districts]
+
+                return {
+                    "status": "ok",
+                    "data": {
+                        "districts": districts,
+                        "enrollment": agg_yearly("enrollment_data", "age_0_5 + age_5_17 + age_18_greater"),
+                        "biometric": agg_yearly("biometric_data", "bio_age_5_17 + bio_age_17_"),
+                        "demographic": agg_yearly("demographic_data", "demo_age_5_17 + demo_age_17_"),
+                    },
+                }
+
+            # ---------------- MONTHLY AGG ----------------
+            if type == "monthly":
+                if not (year and month):
+                    return {"status": "incomplete request"}
+
+                def agg_monthly(table, col):
+                    # aggregate per district for given month
+                    cur.execute(f"""
+                        SELECT district, SUM({col})
+                        FROM {table}
+                        WHERE state = %s
+                          AND EXTRACT(YEAR FROM date) = %s
+                          AND EXTRACT(MONTH FROM date) = %s
+                        GROUP BY district
+                    """, (state, int(year), int(month)))
+
+                    rows = dict(cur.fetchall())
+                    return [rows.get(d, 0) for d in districts]
+
+                return {
+                    "status": "ok",
+                    "data": {
+                        "districts": districts,
+                        "enrollment": agg_monthly("enrollment_data", "age_0_5 + age_5_17 + age_18_greater"),
+                        "biometric": agg_monthly("biometric_data", "bio_age_5_17 + bio_age_17_"),
+                        "demographic": agg_monthly("demographic_data", "demo_age_5_17 + demo_age_17_"),
+                    },
+                }
+
+        # ==========================================================
+        # CASE 2: STATE IS NOT PROVIDED (ALL STATES)
+        # ==========================================================
+        else:
+            # fetch all states
+            cur.execute("""
+                SELECT DISTINCT state
+                FROM enrollment_data
+                ORDER BY state
+            """)
+            states = [r[0] for r in cur.fetchall()]
+
+            if not states:
+                return {"status": "ok", "data": {}}
+
+            def agg_all_states(table, col, extra_where="", extra_params=()):
+                cur.execute(f"""
+                    SELECT state, SUM({col})
+                    FROM {table}
+                    {extra_where}
+                    GROUP BY state
+                """, extra_params)
+
+                rows = dict(cur.fetchall())
+                return [rows.get(s, 0) for s in states]
+
+            # ---------------- YEARLY ----------------
+            if type == "yearly":
+                if not year:
+                    return {"status": "incomplete request"}
+
+                where = "WHERE EXTRACT(YEAR FROM date) = %s"
+                params = (int(year),)
+
+                return {
+                    "status": "ok",
+                    "data": {
+                        "states": states,
+                        "enrollment": agg_all_states(
+                            "enrollment_data",
+                            "age_0_5 + age_5_17 + age_18_greater",
+                            where,
+                            params,
+                        ),
+                        "biometric": agg_all_states(
+                            "biometric_data",
+                            "bio_age_5_17 + bio_age_17_",
+                            where,
+                            params,
+                        ),
+                        "demographic": agg_all_states(
+                            "demographic_data",
+                            "demo_age_5_17 + demo_age_17_",
+                            where,
+                            params,
+                        ),
+                    },
+                }
+
+            # ---------------- MONTHLY ----------------
+            if type == "monthly":
+                if not (year and month):
+                    return {"status": "incomplete request"}
+
+                where = """
+                    WHERE EXTRACT(YEAR FROM date) = %s
+                      AND EXTRACT(MONTH FROM date) = %s
+                """
+                params = (int(year), int(month))
+
+                return {
+                    "status": "ok",
+                    "data": {
+                        "states": states,
+                        "enrollment": agg_all_states(
+                            "enrollment_data",
+                            "age_0_5 + age_5_17 + age_18_greater",
+                            where,
+                            params,
+                        ),
+                        "biometric": agg_all_states(
+                            "biometric_data",
+                            "bio_age_5_17 + bio_age_17_",
+                            where,
+                            params,
+                        ),
+                        "demographic": agg_all_states(
+                            "demographic_data",
+                            "demo_age_5_17 + demo_age_17_",
+                            where,
+                            params,
+                        ),
+                    },
+                }
+
+        return {"status": "invalid request"}
+
+    finally:
+        # guaranteed cleanup
+        cur.close()
+        conn.close()
+
 @app.post("/upload_csv")
 async def upload_csv(
     request: Request,
@@ -342,8 +535,8 @@ async def upload_csv(
 
     type_columns = {
         "enrollment": {"age_0_5", "age_5_17", "age_18_greater"},
-        "biometric": {"bio_age_0_5", "bio_age_17_"},
-        "demographic": {"demo_age_0_5", "demo_age_17_"},
+        "biometric": {"bio_age_5_17", "bio_age_17_"},
+        "demographic": {"demo_age_5_17", "demo_age_17_"},
     }
 
     required_cols = common_cols | type_columns[type]
