@@ -1,8 +1,16 @@
 import psycopg2
+import os
+import json
+import google.generativeai as genai
+from datetime import date
 from fastapi import FastAPI, Request, Response, UploadFile, File
-from app.db import get_conn
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
+from calendar import monthrange
+
+from app.db import get_conn
+from app.custom_json import DecimalEncoder
+
 app = FastAPI()
 
 app.add_middleware(
@@ -13,6 +21,7 @@ app.add_middleware(
     allow_methods=['*'],
 )
 
+agg_cache = {}
 
 @app.get("/filter")
 def get_filter(
@@ -134,9 +143,44 @@ def get_filter(
         cur.close()
         conn.close()
 
+def get_ai_summary(data):
+    # implement Gemini API summary generation
 
-from calendar import monthrange
-from datetime import timedelta
+
+    # read API key from environment variable
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+    # use free Gemini model
+    # model = genai.GenerativeModel("gemini-2.5-flash-lite")
+    model = genai.GenerativeModel("gemma-3-27b-it")
+
+    # construct prompt with strict word limit
+    prompt = f"""
+    You are a data analyst.
+
+    Analyze the following JSON data and provide clear insights, trends, and notable observations.
+    Do not explain the data structure.
+    Do not repeat raw numbers excessively.
+    Keep the response concise, analytical, and under 200 words.
+
+    DATA:
+    {json.dumps(data, indent=2, cls=DecimalEncoder)}
+    """
+
+    try:
+        # generate content using Gemini
+        response = model.generate_content(prompt)
+
+        # safely extract text response
+        summary = response.text.strip() if response and response.text else ""
+
+        return summary[:1200]  # hard cap to stay well under 200 words
+
+    except Exception as e:
+        # graceful failure handling\
+        print("Gemini error:", e)
+        return "AI summary could not be generated at this time."
+
 
 @app.get("/data")
 def get_data(
@@ -149,7 +193,6 @@ def get_data(
     year: str | None = None,
     month: str | None = None,
 ):
-
     # normalize empty strings
     state = state or None
     district = district or None
@@ -178,6 +221,9 @@ def get_data(
 
         where_clause = " AND ".join(filters)
 
+        # initialize response dict early
+        response_data = {"status": "ok", "data": {}}
+
         # =========================
         # monthly -> MONTHLY AGG
         # =========================
@@ -187,7 +233,6 @@ def get_data(
                 return {"status": "incomplete request"}
 
             def fetch_yearly(table, columns):
-                # monthly aggregation with zero-fill
                 query = f"""
                     SELECT
                         EXTRACT(MONTH FROM date)::int AS m,
@@ -210,35 +255,30 @@ def get_data(
                         data[c][month_idx] = r[i + 1] or 0
 
                 return {
-                    c: {
-                        "x": list(range(1, 13)),
-                        "y": data[c],
-                    }
+                    c: {"x": list(range(1, 13)), "y": data[c]}
                     for c in columns
                 }
 
-            return {
-                "status": "ok",
-                "data": {
-                    "enrollment": fetch_yearly(
-                        "enrollment_data",
-                        ["age_0_5", "age_5_17", "age_18_greater"],
-                    ),
-                    "biometric": fetch_yearly(
-                        "biometric_data",
-                        ["bio_age_5_17", "bio_age_17_"],
-                    ),
-                    "demographic": fetch_yearly(
-                        "demographic_data",
-                        ["demo_age_5_17", "demo_age_17_"],
-                    ),
-                },
+            # populate dict instead of returning
+            response_data["data"] = {
+                "enrollment": fetch_yearly(
+                    "enrollment_data",
+                    ["age_0_5", "age_5_17", "age_18_greater"],
+                ),
+                "biometric": fetch_yearly(
+                    "biometric_data",
+                    ["bio_age_5_17", "bio_age_17_"],
+                ),
+                "demographic": fetch_yearly(
+                    "demographic_data",
+                    ["demo_age_5_17", "demo_age_17_"],
+                ),
             }
 
         # =========================
         # daily -> DAY OF MONTH
         # =========================
-        if type == "daily":
+        elif type == "daily":
 
             if not (year and month):
                 return {"status": "incomplete request"}
@@ -246,7 +286,6 @@ def get_data(
             days_in_month = monthrange(int(year), int(month))[1]
 
             def fetch_daily(table, columns):
-                # daily aggregation by day-of-month
                 query = f"""
                     SELECT
                         EXTRACT(DAY FROM date)::int AS d,
@@ -274,37 +313,39 @@ def get_data(
                         data[c][day_idx] = r[i + 1] or 0
 
                 return {
-                    c: {
-                        "x": x_axis,
-                        "y": data[c],
-                    }
+                    c: {"x": x_axis, "y": data[c]}
                     for c in columns
                 }
 
-            return {
-                "status": "ok",
-                "data": {
-                    "enrollment": fetch_daily(
-                        "enrollment_data",
-                        ["age_0_5", "age_5_17", "age_18_greater"],
-                    ),
-                    "biometric": fetch_daily(
-                        "biometric_data",
-                        ["bio_age_5_17", "bio_age_17_"],
-                    ),
-                    "demographic": fetch_daily(
-                        "demographic_data",
-                        ["demo_age_5_17", "demo_age_17_"],
-                    ),
-                },
+            # populate dict instead of returning
+            response_data["data"] = {
+                "enrollment": fetch_daily(
+                    "enrollment_data",
+                    ["age_0_5", "age_5_17", "age_18_greater"],
+                ),
+                "biometric": fetch_daily(
+                    "biometric_data",
+                    ["bio_age_5_17", "bio_age_17_"],
+                ),
+                "demographic": fetch_daily(
+                    "demographic_data",
+                    ["demo_age_5_17", "demo_age_17_"],
+                ),
             }
 
-        return {"status": "invalid request"}
+        else:
+            return {"status": "invalid request"}
+
+        # generate AI summary after full data is ready
+        response_data["summary"] = get_ai_summary(response_data["data"])
+
+        # single return point
+        return response_data
 
     finally:
-        # guaranteed DB cleanup
         cur.close()
         conn.close()
+
 
 @app.get("/aggregate")
 def get_aggregate(
@@ -318,6 +359,21 @@ def get_aggregate(
     # basic validation
     if type not in {"yearly", "monthly"}:
         return {"status": "invalid request"}
+
+    if state == None:
+        data = None
+        if type == 'yearly':
+            
+            data = agg_cache.get(('yearly', date.today(), year))  
+        else:
+            data = agg_cache.get(('monthly', date.today(), year, month))
+        if data is not None:
+            return data     
+
+        print(data)
+        print('did not return')   
+        pass
+
 
     conn = get_conn()
     cur = conn.cursor()
@@ -431,7 +487,7 @@ def get_aggregate(
                 where = "WHERE EXTRACT(YEAR FROM date) = %s"
                 params = (int(year),)
 
-                return {
+                data = {
                     "status": "ok",
                     "data": {
                         "states": states,
@@ -455,6 +511,9 @@ def get_aggregate(
                         ),
                     },
                 }
+                agg_cache[('yearly', date.today(), year)] = data
+                print('Set cache yearly')
+                return data
 
             # ---------------- MONTHLY ----------------
             if type == "monthly":
@@ -467,7 +526,7 @@ def get_aggregate(
                 """
                 params = (int(year), int(month))
 
-                return {
+                data = {
                     "status": "ok",
                     "data": {
                         "states": states,
@@ -491,6 +550,8 @@ def get_aggregate(
                         ),
                     },
                 }
+                agg_cache[('monthly', date.today(), year, month)] = data
+                return data
 
         return {"status": "invalid request"}
 
