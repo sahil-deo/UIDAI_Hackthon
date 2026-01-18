@@ -24,6 +24,7 @@ app.add_middleware(
 agg_cache = {}
 
 @app.get("/filter")
+
 def get_filter(
     request: Request,
     response: Response,
@@ -156,12 +157,39 @@ def get_ai_summary(data):
 
     # construct prompt with strict word limit
     prompt = f"""
-    You are a data analyst.
+    You are an analytics assistant for an Aadhaar operations dashboard.
 
-    Analyze the following JSON data and provide clear insights, trends, and notable observations.
-    Do not explain the data structure.
-    Do not repeat raw numbers excessively.
-    Keep the response concise, analytical, and under 200 words.
+    You will be given spike analysis results derived from UIDAI datasets.
+    The data includes:
+    - Spike type (Enrollment / Demographic Update / Biometric Update)
+    - State, District, and PIN code
+    - Time period of spike
+    - Whether the spike is sudden, recurring, or seasonal
+    - Age group involved (if available)
+
+    Your task:
+    Generate SHORT, ACTIONABLE, and OPERATIONAL predictions in BULLET POINTS.
+
+    Rules:
+    - Do NOT explain the data.
+    - Do NOT use technical or AI-heavy language.
+    - Each bullet must be a clear recommendation or prediction.
+    - Keep each bullet to 1–2 lines maximum.
+    - Focus on staffing, centers, devices, or workflow decisions.
+
+    Output format (strict):
+    - <Actionable prediction 1>
+    - <Actionable prediction 2>
+    - <Actionable prediction 3>
+
+    Examples of expected output:
+    - Deploy temporary enrollment camps for the next 30 days in this PIN.
+    - Prioritize update-only counters instead of expanding enrollment capacity.
+    - Schedule biometric device recalibration and operator retraining.
+    - Increase staffing during peak weeks to manage recurring spikes.
+    - Shift resources from low-activity districts to high-pressure areas.
+
+    Now generate predictions based ONLY on the spike patterns provided.
 
     DATA:
     {json.dumps(data, indent=2, cls=DecimalEncoder)}
@@ -361,18 +389,23 @@ def get_aggregate(
         return {"status": "invalid request"}
 
     if state == None:
-        data = None
+        today_data = None
         if type == 'yearly':
+            data = agg_cache.get(('yearly', year))  
+            if data is not None:
+                today_data = data.get(date.today)
+                if today_data == None:
+                    del agg_cache[('yearly', year)] 
             
-            data = agg_cache.get(('yearly', date.today(), year))  
-        else:
-            data = agg_cache.get(('monthly', date.today(), year, month))
-        if data is not None:
-            return data     
-
-        print(data)
-        print('did not return')   
-        pass
+        else:            
+            data = agg_cache.get(('monthly', year, month))
+            if data is not None:
+                today_data = data.get(date.today)
+                if today_data == None:
+                    del agg_cache[('monthly', year, month)]
+                    
+        if today_data is not None:
+            return today_data     
 
 
     conn = get_conn()
@@ -511,7 +544,9 @@ def get_aggregate(
                         ),
                     },
                 }
-                agg_cache[('yearly', date.today(), year)] = data
+
+
+                agg_cache[('yearly', year)] = {date.today: data}
                 print('Set cache yearly')
                 return data
 
@@ -550,7 +585,7 @@ def get_aggregate(
                         ),
                     },
                 }
-                agg_cache[('monthly', date.today(), year, month)] = data
+                agg_cache[('monthly', year, month)] = {date.today : data}
                 return data
 
         return {"status": "invalid request"}
