@@ -2,6 +2,10 @@ import psycopg2
 import os
 import json
 import google.generativeai as genai
+import hashlib
+import secrets
+
+from psycopg2.extras import RealDictCursor
 from datetime import date
 from fastapi import FastAPI, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +38,8 @@ def get_filter(
     pincode: str | None = None,
     year: str | None = None,
 ):
-
+    if not check_user_loggedin(request):
+        return {'status':'unauthenticated'}
     # normalize empty strings
     state = state or None
     district = district or None
@@ -221,6 +226,8 @@ def get_data(
     year: str | None = None,
     month: str | None = None,
 ):
+    if not check_user_loggedin(request):
+        return {'status':'unauthenticated'}
     # normalize empty strings
     state = state or None
     district = district or None
@@ -384,6 +391,8 @@ def get_aggregate(
     year: str | None = None,
     month: str | None = None,
 ):
+    if not check_user_loggedin(request):
+        return {'status':'unauthenticated'}
     # basic validation
     if type not in {"yearly", "monthly"}:
         return {"status": "invalid request"}
@@ -602,6 +611,8 @@ async def upload_csv(
     type: str,
     file: UploadFile = File(...)
 ):
+    if not check_user_loggedin(request):
+        return {'status':'unauthenticated'}
     import pandas as pd
 
     # validate file extension
@@ -694,4 +705,112 @@ async def upload_csv(
         conn.close()
 
     return {"status": "ok"}
+
+
+
+@app.post("/login")
+def login(request: Request, response: Response, username: str, password: str):
+    if check_user_loggedin(request):
+        return {'status':'already loggedin'}
+
+
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # validate credentials
+        cur.execute(
+            """
+            SELECT username
+            FROM ud_users
+            WHERE username = %s AND password_hash = %s
+            """,
+            (username, password_hash)
+        )
+        user = cur.fetchone()
+
+        if not user:
+            return {"status": "invalid credentials"}
+
+        # generate session token
+        token = secrets.token_urlsafe(32)
+        token_hash = hash_token(token)
+
+        # store hashed token in memory
+        sessions[token_hash] = username
+
+        # set raw token in cookie
+        response.set_cookie(
+            key="token",
+            value=token,
+            httponly=True
+        )
+
+        return {"status": "ok"}
+
+    finally:
+        cur.close()
+        conn.close()
+
+    pass
+
+@app.post("/signup")
+def signup(request: Request, response: Response, username: str, password: str):
+    if check_user_loggedin(request):
+        return {'status':'already loggedin'}
+    
+    conn = get_conn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # check if user already exists
+        cur.execute(
+            "SELECT 1 FROM ud_users WHERE username = %s",
+            (username,)
+        )
+        if cur.fetchone():
+            return {"status": "user already exists"}
+
+        # hash password before storing
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+        cur.execute(
+            """
+            INSERT INTO ud_users (username, password_hash)
+            VALUES (%s, %s)
+            """,
+            (username, password_hash)
+        )
+        conn.commit()
+
+        return {"status": "ok"}
+
+    finally:
+        cur.close()
+        conn.close()
+    
+
+@app.post("/logout")
+def logout(request: Request, response:Response):
+    if not check_user_loggedin(request):
+        return {'status':'already loggedout'}
+
+    del sessions[hash_token(request.cookies.get('token'))]
+    
+    return {'status':'ok'}
+
+sessions = {}
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def check_user_loggedin(request: Request):
+    token = request.cookies.get('token')
+    if token == None:
+        return False
+    
+    token_hash = hash_token(token)
+    return token_hash in sessions
 
