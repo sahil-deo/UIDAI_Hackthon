@@ -17,6 +17,8 @@ from app.custom_json import DecimalEncoder
 
 app = FastAPI()
 
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -38,7 +40,7 @@ def get_filter(
     pincode: str | None = None,
     year: str | None = None,
 ):
-    if not check_user_loggedin(request):
+    if bool(os.getenv('CHECK_AUTH')) and not check_user_loggedin(request):
         return {'status':'unauthenticated'}
     # normalize empty strings
     state = state or None
@@ -226,7 +228,7 @@ def get_data(
     year: str | None = None,
     month: str | None = None,
 ):
-    if not check_user_loggedin(request):
+    if bool(os.getenv('CHECK_AUTH')) and not check_user_loggedin(request):
         return {'status':'unauthenticated'}
     # normalize empty strings
     state = state or None
@@ -391,7 +393,7 @@ def get_aggregate(
     year: str | None = None,
     month: str | None = None,
 ):
-    if not check_user_loggedin(request):
+    if bool(os.getenv('CHECK_AUTH')) and not check_user_loggedin(request):
         return {'status':'unauthenticated'}
     # basic validation
     if type not in {"yearly", "monthly"}:
@@ -611,7 +613,7 @@ async def upload_csv(
     type: str,
     file: UploadFile = File(...)
 ):
-    if not check_user_loggedin(request):
+    if bool(os.getenv('CHECK_AUTH')) and not check_user_loggedin(request):
         return {'status':'unauthenticated'}
     import pandas as pd
 
@@ -807,6 +809,7 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 def check_user_loggedin(request: Request):
+       
     token = request.cookies.get('token')
     if token == None:
         return False
