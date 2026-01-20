@@ -1,285 +1,201 @@
-# API Documentation
+# Aadhaar Analytics Backend
 
-## Base URL
-
-```
-https://uidai-hackthon.onrender.com
-```
-
-All endpoints are **GET** requests and return JSON.
+This project is a **FastAPI-based backend service** designed for analyzing Aadhaar enrollment, biometric, and demographic update data. It provides structured APIs for filtering, aggregation, visualization-ready datasets, CSV ingestion, authentication, and AI-powered operational insights.
 
 ---
 
-## Common Response Format
+## Features
 
-### Success
+### Authentication
 
-```json
-{
-  "status": "ok",
-  "data": ...
-}
-```
+* Username/password-based login and signup
+* Session-based authentication using HTTP-only cookies
+* In-memory session storage
+* Protected APIs (authentication required)
 
-### Errors
+### Data Ingestion
 
-```json
-{ "status": "invalid request" }
-{ "status": "incomplete request" }
-```
+* Upload CSV files for:
 
-* **invalid request** → unsupported or missing `type`
-* **incomplete request** → required query parameters not provided
+  * Enrollment data
+  * Biometric updates
+  * Demographic updates
+* Automatic validation, cleaning, deduplication, and type conversion
+* Bulk insertion into PostgreSQL
 
----
+### Filtering APIs
 
-## 1. `/filter` Endpoint
+* Fetch distinct values for:
 
-Used to **fetch available filter values** (state, district, pincode, year, month) from the database.
+  * States
+  * Districts
+  * PIN codes
+  * Years
+  * Months
+* Hierarchical filtering (state → district → pincode → time)
 
-### Endpoint
+### Data Analytics APIs
 
-```
-GET /filter
-```
+* **Monthly analytics** (per year)
+* **Daily analytics** (per month)
+* Outputs are chart-ready (`x` and `y` arrays)
+* Separate breakdowns for:
 
-### Query Parameters
+  * Enrollment
+  * Biometric updates
+  * Demographic updates
+* Age-group based aggregation
 
-| Name     | Required | Description                    |
-| -------- | -------- | ------------------------------ |
-| type     | Yes      | Filter type to fetch           |
-| state    | No       | Required for some filter types |
-| district | No       | Required for some filter types |
-| pincode  | No       | Optional refinement            |
-| year     | No       | Required for `month`           |
+### Aggregation APIs
 
----
+* State-wise and district-wise aggregations
+* Yearly and monthly summaries
+* Optimized in-memory caching for national-level aggregates
 
-### Supported `type` Values
+### AI Insights
 
----
+* Uses Google Gemini (Gemma model)
+* Generates short, actionable operational recommendations
+* Focused on:
 
-### `type=state`
-
-Returns all distinct states.
-
-**Request**
-
-```
-/filter?type=state
-```
-
-**Response**
-
-```json
-{
-  "status": "ok",
-  "data": ["Karnataka", "Maharashtra", "Tamil Nadu"]
-}
-```
+  * Staffing
+  * Resource allocation
+  * Center operations
+* Strictly non-technical, decision-oriented output
 
 ---
 
-### `type=district`
+## Tech Stack
 
-Requires `state`.
-
-**Request**
-
-```
-/filter?type=district&state=Karnataka
-```
-
-**Response**
-
-```json
-{
-  "status": "ok",
-  "data": ["Bangalore", "Mysore"]
-}
-```
+* **Backend Framework:** FastAPI
+* **Database:** PostgreSQL
+* **ORM/Driver:** psycopg2
+* **Data Processing:** Pandas
+* **AI Integration:** Google Generative AI (Gemini)
+* **Auth:** Cookie-based sessions
+* **Caching:** In-memory Python dictionary
 
 ---
 
-### `type=pincode`
+## Environment Variables
 
-Requires `state` and `district`.
+Create a `.env` file or export the following:
 
-**Request**
-
-```
-/filter?type=pincode&state=Karnataka&district=Bangalore
+```bash
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
-**Response**
-
-```json
-{
-  "status": "ok",
-  "data": ["560001", "560002"]
-}
-```
+Database credentials are expected to be handled inside `app.db.get_conn()`.
 
 ---
 
-### `type=year`
+## Database Tables (Expected)
 
-Requires `state`.
-Optionally filtered by `district` and `pincode`.
+### `ud_users`
 
-**Request**
+| Column        | Type |
+| ------------- | ---- |
+| username      | text |
+| password_hash | text |
 
-```
-/filter?type=year&state=Karnataka
-```
+### `enrollment_data`
 
-**Response**
+* date
+* state
+* district
+* pincode
+* age_0_5
+* age_5_17
+* age_18_greater
 
-```json
-{
-  "status": "ok",
-  "data": [2021, 2022, 2023]
-}
-```
+### `biometric_data`
 
----
+* date
+* state
+* district
+* pincode
+* bio_age_5_17
+* bio_age_17_
 
-### `type=month`
+### `demographic_data`
 
-Requires `state` and `year`.
-Optionally filtered by `district` and `pincode`.
-
-**Request**
-
-```
-/filter?type=month&state=Karnataka&year=2023
-```
-
-**Response**
-
-```json
-{
-  "status": "ok",
-  "data": ["January", "February", "March"]
-}
-```
-
-Returned months are **ordered chronologically**.
+* date
+* state
+* district
+* pincode
+* demo_age_5_17
+* demo_age_17_
 
 ---
 
-## 2. `/data` Endpoint
+## API Endpoints
 
-Used to fetch **aggregated enrollment, biometric, and demographic data**.
+### Authentication
 
-### Endpoint
+* `POST /signup`
+* `POST /login`
+* `POST /logout`
 
-```
-GET /data
-```
+### Filters
 
-### Query Parameters
+* `GET /filter`
 
-| Name     | Required | Description             |
-| -------- | -------- | ----------------------- |
-| type     | Yes      | `monthly` or `daily`    |
-| state    | Yes      | State name              |
-| district | No       | Optional                |
-| pincode  | No       | Optional                |
-| year     | Yes      | Required for both types |
-| month    | Depends  | Required for `daily`    |
+  * Types: `state`, `district`, `pincode`, `year`, `month`
 
----
+### Data Analytics
 
-## `type=monthly`
+* `GET /data`
 
-Returns **month-wise aggregated data** for a given year.
+  * Types: `monthly`, `daily`
+  * Returns analytics + AI summary
 
-### Required
+### Aggregations
 
-* `state`
-* `year`
+* `GET /aggregate`
 
-### Request
+  * Types: `yearly`, `monthly`
+  * Supports state-level and national-level views
 
-```
-/data?type=monthly&state=Karnataka&year=2023
-```
+### CSV Upload
 
-### Response Structure
+* `POST /upload_csv`
 
-```json
-{
-  "status": "ok",
-  "data": {
-    "enrollment": {
-      "age_0_5": { "x": [1..12], "y": [...] },
-      "age_5_17": { "x": [1..12], "y": [...] },
-      "age_18_greater": { "x": [1..12], "y": [...] }
-    },
-    "biometric": {
-      "bio_age_5_17": { "x": [1..12], "y": [...] },
-      "bio_age_17_": { "x": [1..12], "y": [...] }
-    },
-    "demographic": {
-      "demo_age_5_17": { "x": [1..12], "y": [...] },
-      "demo_age_17_": { "x": [1..12], "y": [...] }
-    }
-  }
-}
-```
-
-* `x` → month numbers (1–12)
-* `y` → summed values
-* Missing months are **zero-filled**
+  * Types: `enrollment`, `biometric`, `demographic`
 
 ---
 
-## `type=daily`
+## Caching Behavior
 
-Returns **day-wise aggregated data** for a specific month.
-
-### Required
-
-* `state`
-* `year`
-* `month`
-
-### Request
-
-```
-/data?type=daily&state=Karnataka&year=2023&month=3
-```
-
-### Response Structure
-
-```json
-{
-  "status": "ok",
-  "data": {
-    "enrollment": {
-      "age_0_5": { "x": [1..31], "y": [...] },
-      "age_5_17": { "x": [1..31], "y": [...] }
-    },
-    "biometric": {
-      "bio_age_5_17": { "x": [1..31], "y": [...] }
-    },
-    "demographic": {
-      "demo_age_5_17": { "x": [1..31], "y": [...] }
-    }
-  }
-}
-```
-
-* `x` → day of month
-* Days without data are **zero-filled**
-* Month length matches calendar (28–31)
+* National-level aggregates are cached per day
+* Cache auto-invalidates daily
+* Reduces repeated heavy aggregation queries
 
 ---
 
-## Notes for Developers
+## Security Notes
 
-* All filters are **optional unless stated**
-* Empty query strings are treated as `null`
-* Responses are optimized for **chart plotting**
-* Database connections are opened and closed per request
+* Passwords are hashed using SHA-256
+* Session tokens are hashed before storage
+* Cookies are HTTP-only
+* No JWTs used
+
+---
+
+## Intended Use Case
+
+This backend is designed for:
+
+* Government dashboards
+* Aadhaar operational monitoring
+* Policy and planning teams
+* Resource optimization and forecasting
+
+---
+
+## Future Improvements
+
+* Persistent session storage (Redis / DB)
+* Role-based access control
+* Rate limiting
+* Background jobs for heavy aggregation
+* Precomputed analytics tables
