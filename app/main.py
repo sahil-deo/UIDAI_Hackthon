@@ -164,40 +164,21 @@ def get_ai_summary(data):
 
     # construct prompt with strict word limit
     prompt = f"""
-    You are an analytics assistant for an Aadhaar operations dashboard.
-
-    You will be given spike analysis results derived from UIDAI datasets.
-    The data includes:
-    - Spike type (Enrollment / Demographic Update / Biometric Update)
-    - State, District, and PIN code
-    - Time period of spike
-    - Whether the spike is sudden, recurring, or seasonal
-    - Age group involved (if available)
-
-    Your task:
-    Generate SHORT, ACTIONABLE, and OPERATIONAL predictions in BULLET POINTS.
-
-    Rules:
-    - Do NOT explain the data.
-    - Do NOT use technical or AI-heavy language.
-    - Each bullet must be a clear recommendation or prediction.
-    - Keep each bullet to 1–2 lines maximum.
-    - Focus on staffing, centers, devices, or workflow decisions.
-
-    Output format (strict):
-    - <Actionable prediction 1>
-    - <Actionable prediction 2>
-    - <Actionable prediction 3>
-
-    Examples of expected output:
-    - Deploy temporary enrollment camps for the next 30 days in this PIN.
-    - Prioritize update-only counters instead of expanding enrollment capacity.
-    - Schedule biometric device recalibration and operator retraining.
-    - Increase staffing during peak weeks to manage recurring spikes.
-    - Shift resources from low-activity districts to high-pressure areas.
-
-    Now generate predictions based ONLY on the spike patterns provided.
-
+    You are an Aadhaar operations assistant. Your only job is to output bullet-point recommendations for field staff.
+    
+    STRICT RULES:
+    - Output ONLY bullet points. Nothing else.
+    - No headers, no labels, no explanations, no summaries.
+    - Each bullet = one operational action (staffing / devices / centers / workflow).
+    - Max 2 lines per bullet.
+    - Do not mention age groups, periods, counts, or data observations.
+    - Do not restate the input.
+    - Do not use words like "spike", "insight", "trend", "data", "analysis".
+    
+    Start every response with "- " and end with the last bullet. No preamble. No closing line.
+    
+    Input will be spike pattern summaries. Generate 4–6 field-ready recommendations based on them.
+    
     DATA:
     {json.dumps(data, indent=2, cls=DecimalEncoder)}
     """
