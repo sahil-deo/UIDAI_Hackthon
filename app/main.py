@@ -151,52 +151,44 @@ def get_filter(
         cur.close()
         conn.close()
 
-def summarize_data_for_prompt(data):
-    """Convert raw JSON into minimal natural language for the prompt."""
-    lines = []
-    
-    for spike_type, records in data.items():
-        if not records:
-            continue
-        # just describe volume and recency, nothing else
-        high_volume = any(r.get("count", 0) > 1000 for r in records)
-        recent = any(r.get("period", 0) > 6 for r in records)
-        
-        desc = spike_type.replace("_", " ").lower()
-        volume_word = "high" if high_volume else "moderate"
-        timing = "concentrated in recent months" if recent else "spread across the year"
-        
-        lines.append(f"{desc}: {volume_word} volume, {timing}")
-    
-    return "\n".join(lines)
-
-
 def get_ai_summary(data):
+    # implement Gemini API summary generation
+    # read API key from environment variable
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    # use free Gemini model
+    # model = genai.GenerativeModel("gemini-2.5-flash-lite")
     model = genai.GenerativeModel("gemma-4-31b-it")
+    # construct prompt with strict word limit
+    prompt = f"""
+    You are an Aadhaar operations assistant. Your only job is to output bullet-point recommendations for field staff.
 
-    clean_summary = summarize_data_for_prompt(data)  # <-- preprocess here
+    STRICT RULES:
+    - Output ONLY bullet points. Nothing else.
+    - No headers, no labels, no explanations, no summaries.
+    - Each bullet = one operational action (staffing / devices / centers / workflow).
+    - Max 2 lines per bullet.
+    - Do not mention age groups, periods, counts, or data observations.
+    - Do not restate the input.
+    - Do not use words like "spike", "insight", "trend", "data", "analysis".
 
-    prompt = f"""You are an Aadhaar operations assistant. Output ONLY bullet-point recommendations for field staff.
+    Start every response with "- " and end with the last bullet. No preamble. No closing line.
 
-    RULES:
-    - Bullet points only. No preamble, no closing line.
-    - Each bullet = one action (staffing / devices / centers / workflow).
-    - Max 2 lines per bullet. 4-6 bullets total.
-    - Do not mention counts, periods, age groups, or restate the input.
-    - Start every response with "- "
-    
-    SITUATION:
-    {clean_summary}
+    Input will be spike pattern summaries. Generate 4–6 field-ready recommendations based on them.
+
+    DATA:
+    {json.dumps(data, indent=2, cls=DecimalEncoder)}
     """
     try:
+        # generate content using Gemini
         response = model.generate_content(prompt)
+        # safely extract text response
         summary = response.text.strip() if response and response.text else ""
-        return summary[:1200]
+        return summary[:1200]  # hard cap to stay well under 200 words
     except Exception as e:
+        # graceful failure handling\
         print("Gemini error:", e)
         return "AI summary could not be generated at this time."
-
+        
 @app.get("/data")
 def get_data(
     request: Request,
