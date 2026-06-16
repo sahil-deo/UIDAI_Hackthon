@@ -160,7 +160,7 @@ def get_ai_summary(data):
 
     # use free Gemini model
     # model = genai.GenerativeModel("gemini-2.5-flash-lite")
-    model = genai.GenerativeModel("gemma-4-31b")
+    model = genai.GenerativeModel("gemma-4-31b-it")
 
     # construct prompt with strict word limit
     prompt = f"""
